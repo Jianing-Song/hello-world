@@ -1,0 +1,64 @@
+\\ F(n) mod k
+fib_mod(n,k) = (Mod([1,1;1,0],k)^n)[1,2];
+
+\\ Modify the list from [v[1], ..., v[n]] to [F(v[1]) mod m, ..., F(v[n]) mod m]
+update(v, m) = my(l=#v); vector(l, i, lift(fib_mod(v[i],m)));
+
+\\ Pisano period of k
+P(k) = {
+\\ find maximum possible order
+my(r=1, f=factor(k));
+for(j=1, #f[, 1], my(p=f[j, 1], e=f[j, 2]);
+    if(p%5==1||p%5==4, r=lcm(r,(p-1)*p^(e-1)));
+    if(p%5==2||p%5==3, r=lcm(r,2*(p+1)*p^(e-1)));
+    if(p==5, r=lcm(r,4*5^e));
+);
+my(ld=divisors(r), d); for(i=1, #ld, d=ld[i]; if(Mod([1,1;1,0],k)^d==[1,0;0,1], return(d)));
+}
+
+\\ Determine if a number is of the form 24*5^e. If yes, return e, otherwise return -1
+check24(k) = my(e=0); while(k%5==0, k=k/5; e++); if(24%k==0, return(e), return(-1));
+
+/* 
+  Given k > 1, we find a sequence (k_0, k_1, ..., k_r) such that
+    k | k_0, P(k_i) | k_{i+1} (i = 0..r-1), P(k_r) = k_r.
+  Then for m >= r, {F^(m) mod k} has period dividing k_r.
+
+  We just pick k_0 = k and k_{i+1} = P(k_i), until we reach some k_r of the form d*5^e with d dividing 24, then we modify k_r = 24*5^e and stop.
+  E.g.: k = 7, then k_0 = 7, k_1 = P(7) = 16, k_2 = P(16) = 24 (stop). The sequence is (7, 16, 24).
+  E.g.: k = 11, then k_0 = 11, k_1 = P(11) = 10 = 2*5. We modify k_1 = 24*5 = 120 and stop; the sequence is (11, 120).
+  E.g.: k = 41, then k_0 = 41, k_1 = P(41) = 40 = 8*5. We modify k_1 = 24*5 = 120 and stop; the sequence is (41, 120).
+  E.g.: k = 10, then it is already of the form d*5^e with d = 2 and e = 1, so k_0 = 120. The sequence is (120).
+*/
+list_k(k) = my(lk=[], e); while((e=check24(k))==-1, lk=concat(lk, k); k=P(k)); lk=concat(lk, 24*5^e); return(lk);
+
+\\ period of a vector
+period(v)=my(l=#v, ld=divisors(l), d, flag); for(i=1, #ld, d=ld[i]; flag=1; for(j=1, l-d, if(v[j]!=v[j+d], flag=0; break())); if(flag, return(d)));
+
+/*
+  Now we find the periods of F^(m)(0..k_r-1) mod k for m >= r. F^(m)(0..k_r-1) mod k is calculated as follows:
+     F^(0)(0..k_r-1) mod k_r  ->   F^(1)(0..k_r) mod k_{r-1}   -> ... ->  F^(r)(0..k_r-1) mod k_0
+                 v
+     F^(1)(0..k_r-1) mod k_r  ->   F^(2)(0..k_r) mod k_{r-1}   -> ... -> F^(r+1)(0..k_r-1) mod k_0
+                 v
+                ...
+                 v
+    F^(m-r)(0..k_r-1) mod k_r -> F^(m-r+1)(0..k_r) mod k_{r-1} -> ... ->  F^(m)(0..k_r-1) mod k_0
+*/
+find_period(k) = {
+    my(lk = list_k(k), lenk = #lk, kr = lk[lenk], fast, slow, temp, periods=[]);
+    slow = vector(kr, i, i-1);
+    fast = vector(kr, i, i-1);
+    slow = update(slow, kr); fast = update(fast, kr); fast = update(fast, kr);
+    while(fast != slow, slow = update(slow, kr); fast = update(fast, kr); fast = update(fast, kr)); \\ now slow = fast = {F^(i)(0..k_r-1) mod k_r} for some i in the cycle
+
+    forstep(s=lenk-1, 1, -1, slow = update(slow, lk[s])); slow = slow % k; \\ slow = {F^(i+r)(0..k_r-1) mod k}
+    while(1,
+    fast = update(fast, kr);
+    temp = fast;
+    forstep(s=lenk-1, 1, -1, temp = update(temp, lk[s]));
+    temp = temp % k; \\ each update changes temp to {F^(i+r+d)(0..k_r-1) mod k}
+    periods=concat(periods, period(temp));
+    if(temp==slow, return(periods));
+    );
+}
